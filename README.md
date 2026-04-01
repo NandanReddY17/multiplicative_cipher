@@ -1,5 +1,3 @@
-# multiplicative_cipher
-crypto cia
 # Multiplicative Cipher & Custom Hashing Implementation
 
 This repository contains the implementation of a classical **Multiplicative Cipher** and a custom **Polynomial Rolling Hash function**, written entirely from scratch in Python without the use of external cryptographic libraries.
@@ -28,3 +26,16 @@ This function was chosen because it provides excellent distribution and avalanch
 4. Run the test script via the terminal:
    ```bash
    python test_script.py
+Worked ExamplesExample
+1Plaintext: HELLO
+Key: 7
+Ciphertext: XCZZU
+Hash of Ciphertext: 0x4d8174a
+Decryption Check: XCZZU multiplied by modular inverse 15 $\mod 26$ correctly returns HELLO.
+
+Example 2
+Plaintext: WORLD
+Key: 5
+Ciphertext: GSHDP
+Hash of Ciphertext: 0x4875328
+Decryption Check: GSHDP multiplied by modular inverse 21 $\mod 26$ correctly returns WORLD.
