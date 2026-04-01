@@ -1,0 +1,173 @@
+import cv2
+import mediapipe as mp
+import time
+import numpy as np
+import whisper
+import librosa
+import warnings
+
+# Suppress warnings from whisper/librosa for a cleaner terminal output
+warnings.filterwarnings("ignore")
+
+class BodyLanguageAnalyzer:
+    def __init__(self):
+        self.mp_face_detection = mp.solutions.face_detection
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.face_detection = self.mp_face_detection.FaceDetection(min_detection_confidence=0.6)
+        
+        # Scorecard Tracking Variables
+        self.total_frames = 0
+        self.confident_frames = 0
+        self.fidgeting_frames = 0
+        self.looking_away_frames = 0
+
+    def analyze_webcam(self):
+        cap = cv2.VideoCapture(0)
+        print("\nStarting Live Webcam Analysis... Press 'q' to stop the recording.")
+        
+        # Simple variables to track movement/fidgeting between frames
+        prev_x, prev_y = 0, 0
+        
+        while cap.isOpened():
+            success, image = cap.read()
+            if not success:
+                break
+                
+            self.total_frames += 1
+            
+            # Convert BGR to RGB for MediaPipe
+            image_rgb = cv2.cvtColor(cv2.flip(image, 1), cv2.COLOR_BGR2RGB)
+            image_rgb.flags.writeable = False
+            results = self.face_detection.process(image_rgb)
+            
+            # Convert back to BGR for OpenCV display
+            image_rgb.flags.writeable = True
+            image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+            
+            status = "Confident & Focused"
+            color = (0, 255, 0) # Green
+            
+            if results.detections:
+                for detection in results.detections:
+                    self.mp_drawing.draw_detection(image_bgr, detection)
+                    
+                    # Extract bounding box center for basic fidgeting/movement logic
+                    bboxC = detection.location_data.relative_bounding_box
+                    ih, iw, _ = image_bgr.shape
+                    cx, cy = int(bboxC.xmin * iw + bboxC.width * iw / 2), int(bboxC.ymin * ih + bboxC.height * ih / 2)
+                    
+                    # Calculate movement delta
+                    movement = abs(cx - prev_x) + abs(cy - prev_y)
+                    prev_x, prev_y = cx, cy
+                    
+                    if movement > 30 and self.total_frames > 5: # Threshold for fidgeting
+                        status = "Fidgeting / Excessive Movement"
+                        color = (0, 165, 255) # Orange
+                        self.fidgeting_frames += 1
+                    else:
+                        self.confident_frames += 1
+            else:
+                status = "Looking Away / Face Not Detected"
+                color = (0, 0, 255) # Red
+                self.looking_away_frames += 1
+                
+            # Display status on screen
+            cv2.putText(image_bgr, status, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            cv2.imshow('Module F: Body Language Analysis MVP', image_bgr)
+            
+            # Exit on 'q'
+            if cv2.waitKey(5) & 0xFF == ord('q'):
+                break
+                
+        cap.release()
+        cv2.destroyAllWindows()
+        return self.generate_video_scorecard()
+
+    def generate_video_scorecard(self):
+        if self.total_frames == 0: 
+            return None
+        return {
+            "Confident/Focus Time": round((self.confident_frames / self.total_frames) * 100, 2),
+            "Fidgeting Time": round((self.fidgeting_frames / self.total_frames) * 100, 2),
+            "Looking Away Time": round((self.looking_away_frames / self.total_frames) * 100, 2)
+        }
+
+
+class SpeechAnalyzer:
+    def __init__(self):
+        print("\nLoading Whisper AI model for speech extraction (this might take a few seconds)...")
+        self.model = whisper.load_model("base")
+        self.filler_words = ['um', 'uh', 'like', 'you know', 'actually', 'basically', 'so yeah']
+
+    def analyze_audio(self, audio_path):
+        print(f"\nAnalyzing audio file: {audio_path}...")
+        
+        # 1. Transcription extraction
+        result = self.model.transcribe(audio_path)
+        text = result["text"]
+        
+        # 2. Words Per Minute (WPM) calculation
+        duration = librosa.get_duration(path=audio_path)
+        words = text.split()
+        wpm = round((len(words) / duration) * 60, 2) if duration > 0 else 0
+        
+        # 3. Filler Words count
+        text_lower = text.lower()
+        filler_count = sum(text_lower.count(filler) for filler in self.filler_words)
+        
+        # 4. Acoustic Features (MFCCs for your regression model later)
+        y, sr = librosa.load(audio_path)
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+        mfccs_mean = np.mean(mfccs.T, axis=0)
+        
+        return {
+            "Transcription": text.strip(),
+            "WPM": wpm,
+            "Total Filler Words": filler_count,
+            "MFCCs Baseline Ready": True
+        }
+
+
+def main():
+    print("="*50)
+    print("   AI MOCK INTERVIEW SYSTEM - UNIFIED SCRIPT")
+    print("="*50)
+    
+    # --- PHASE 1: Video ---
+    video_analyzer = BodyLanguageAnalyzer()
+    video_scores = video_analyzer.analyze_webcam()
+    
+    # --- PHASE 2: Audio ---
+    audio_path = input("\nEnter the path to your interview audio file (e.g., 'test_audio.wav') to run speech analysis.\n[Or press Enter to skip audio analysis]: ")
+    
+    audio_scores = None
+    if audio_path.strip():
+        speech_analyzer = SpeechAnalyzer()
+        try:
+            audio_scores = speech_analyzer.analyze_audio(audio_path.strip())
+        except Exception as e:
+            print(f"Error reading or analyzing the audio file: {e}")
+
+    # --- PHASE 3: Combined Final Scorecard ---
+    print("\n\n" + "="*50)
+    print("             FINAL AI INTERVIEW SCORECARD")
+    print("="*50)
+    
+    if video_scores:
+        print("\n[ MODULE F: BODY LANGUAGE METRICS ]")
+        for metric, score in video_scores.items():
+            print(f" > {metric}: {score}%")
+    else:
+        print("\n[ MODULE F ] No video data recorded.")
+            
+    if audio_scores:
+        print("\n[ MODULE E: SPEECH & CONFIDENCE METRICS ]")
+        print(f" > Words Per Minute (WPM): {audio_scores['WPM']}")
+        print(f" > Total Filler Words:     {audio_scores['Total Filler Words']}")
+        print(f" > Acoustic Data Ready:    {audio_scores['MFCCs Baseline Ready']}")
+        print(f"\n > Transcription Preview:\n   \"{audio_scores['Transcription'][:150]}...\"")
+        
+    print("\n" + "="*50)
+
+if __name__ == "__main__":
+    main()
